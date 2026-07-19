@@ -1,0 +1,56 @@
+# Raspberry Pi 5 deployment (published at https://3d-browser.bakgaard.net via Traefik).
+#
+# Differs from docker-compose.prod.yml: the 3D library is NOT mounted here (those Windows
+# drives don't exist on the Pi). Instead the Postgres database and the thumbnail cache are
+# copied over from the local machine (see README "Deploy on the Raspberry Pi"), so the
+# searchable grid + thumbnails work without the source files. Full-resolution lightbox
+# images require the original files and are therefore unavailable on the Pi.
+#
+#   docker compose -f docker-compose.pi.yml pull
+#   docker compose -f docker-compose.pi.yml up -d
+#
+# Set IMAGE_OWNER, IMAGE_TAG, POSTGRES_PASSWORD and FRONTEND_PORT in .env (see .env.pi.example).
+services:
+  db:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: patreon
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-patreon}
+      POSTGRES_DB: patreon
+    volumes:
+      # Postgres 18+ images expect the mount at /var/lib/postgresql (data goes in a
+      # version-specific subdir); mounting /var/lib/postgresql/data is rejected.
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U patreon -d patreon"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    image: ${REGISTRY:-ghcr.io}/${IMAGE_OWNER}/3d-browser-backend:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      ConnectionStrings__Default: "Host=db;Port=5432;Database=patreon;Username=patreon;Password=${POSTGRES_PASSWORD:-patreon}"
+      Library__HostRoot: "${HOST_ROOT:-E:\\Patreon}"
+    volumes:
+      # Thumbnail cache copied from the local machine. Serves the grid without the source files.
+      - thumbs:/data/thumbs
+      # NOTE: no library bind mounts — a "Scan library" on the Pi will find nothing by design.
+
+  frontend:
+    image: ${REGISTRY:-ghcr.io}/${IMAGE_OWNER}/3d-browser-frontend:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      # Published on the Pi's LAN IP; Traefik proxies 3d-browser.bakgaard.net -> here.
+      - "${FRONTEND_PORT:-8081}:80"
+
+volumes:
+  pgdata:
+  thumbs:

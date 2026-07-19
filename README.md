@@ -21,7 +21,7 @@ Only objects that have at least one render image are shown in the UI. Model-only
 |---------------|--------------------------------------------------|
 | Frontend      | Angular 22 (standalone + signals), nginx         |
 | Backend       | .NET 10 ASP.NET Core Web API, EF Core + Npgsql    |
-| Database      | PostgreSQL 17                                     |
+| Database      | PostgreSQL 18                                     |
 | Thumbnails    | SixLabors.ImageSharp (managed, disk-cached)       |
 
 ---
@@ -149,6 +149,49 @@ docker compose -f docker-compose.prod.yml up -d
 ```
 
 Both images ship a container `HEALTHCHECK` so `docker compose ps` reports real health.
+
+## Deploy on the Raspberry Pi (`https://3d-browser.bakgaard.net`)
+
+The Pi doesn't have the library drives, so instead of mounting the files we copy the **database**
+(object/render metadata + category tags) and the **thumbnail cache** across. This makes search and
+the thumbnail grid work; the full-resolution lightbox needs the original files and is unavailable on
+the Pi. Uses `docker-compose.pi.yml` (no library mounts) and the multi-arch (arm64) GHCR images.
+
+**Prereq:** cut a release *after* the multi-arch workflow change so arm64 images exist:
+```bash
+git tag v0.1.0 && git push origin v0.1.0   # builds linux/amd64,linux/arm64
+```
+
+### 1. Export data on your Windows machine
+With the local stack running (`docker compose up -d`):
+```powershell
+# Metadata DB (custom-format dump)
+docker compose exec -T db pg_dump -U patreon -d patreon -Fc > patreon.dump
+# Thumbnail cache (the JPEGs that make the grid render without the source files)
+docker compose cp backend:/data/thumbs ./thumbs-cache
+```
+Copy `patreon.dump` and `thumbs-cache/` to the Pi (e.g. `scp -r patreon.dump thumbs-cache pi@192.168.2.118:~/3d-browser/`).
+
+### 2. Bring it up on the Pi
+```bash
+git clone https://github.com/bakgaard/3d-browser.git && cd 3d-browser
+cp .env.pi.example .env          # set POSTGRES_PASSWORD, IMAGE_TAG
+docker compose -f docker-compose.pi.yml pull
+docker compose -f docker-compose.pi.yml up -d db
+# restore metadata (db is empty on first start; backend's EnsureCreated then no-ops)
+docker compose -f docker-compose.pi.yml exec -T db pg_restore -U patreon -d patreon --clean --if-exists --no-owner < patreon.dump
+docker compose -f docker-compose.pi.yml up -d
+# load the thumbnail cache into the `thumbs` volume
+docker compose -f docker-compose.pi.yml cp ./thumbs-cache/. backend:/data/thumbs/
+```
+
+### 3. Publish it
+Routing is handled in the `bakgaard/pi-server` repo — Traefik already terminates TLS (Let's Encrypt)
+and a `3d-browser` router/service (pointing at `http://192.168.2.118:8081`, **no auth**) is defined in
+`traefik/data/dynamic-conf.yaml`. Point `3d-browser.bakgaard.net` at your public IP at your DNS
+provider and open port 80/443 to the Pi; Traefik picks up the file-provider change and requests the
+cert on first hit. Refreshing the data later is just steps 1–2 again (the `--clean` restore is
+idempotent).
 
 ## Running the backend without Docker (optional)
 The backend targets **.NET 10**; your host currently has .NET 9. To run it outside Docker, install

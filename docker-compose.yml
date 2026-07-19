@@ -1,13 +1,15 @@
 services:
   db:
-    image: postgres:17-alpine
+    image: postgres:18-alpine
     restart: unless-stopped
     environment:
       POSTGRES_USER: patreon
       POSTGRES_PASSWORD: patreon
       POSTGRES_DB: patreon
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      # Postgres 18+ images expect the mount at /var/lib/postgresql (data goes in a
+      # version-specific subdir); mounting /var/lib/postgresql/data is rejected.
+      - pgdata:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U patreon -d patreon"]
       interval: 5s
