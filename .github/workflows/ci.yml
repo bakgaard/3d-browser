@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Least privilege: default to no token permissions; each job opts in to only what it needs.
+permissions: {}
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Build backend (.NET 10)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # only needs to read the checked-out code
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - name: Restore
+        working-directory: backend
+        run: dotnet restore
+      - name: Build
+        working-directory: backend
+        run: dotnet build --no-restore -c Release
+      - name: Publish (verify it produces artifacts)
+        working-directory: backend
+        run: dotnet publish -c Release -o out /p:UseAppHost=false
+
+  frontend:
+    name: Build frontend (Angular 22)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm install
+      - name: Build
+        working-directory: frontend
+        run: npm run build

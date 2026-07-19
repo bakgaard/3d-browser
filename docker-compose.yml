@@ -1,0 +1,53 @@
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: patreon
+      POSTGRES_PASSWORD: patreon
+      POSTGRES_DB: patreon
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U patreon -d patreon"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      ConnectionStrings__Default: "Host=db;Port=5432;Database=patreon;Username=patreon;Password=patreon"
+      # Windows path of the primary library, used to build Explorer paths (backslashes).
+      Library__HostRoot: "${HOST_ROOT}"
+    volumes:
+      # Primary library (read-only). Source comes from .env; forward slashes are fine on Windows.
+      - type: bind
+        source: "${PATREON_PATH}"
+        target: /data/patreon
+        read_only: true
+      # Shortcut target for the "Epic Miniatures" .lnk (read-only).
+      - type: bind
+        source: "${EPIC_PATH}"
+        target: "/data/shortcuts/Epic Miniatures"
+        read_only: true
+      # Writable thumbnail cache.
+      - thumbs:/data/thumbs
+    ports:
+      - "8080:8080" # exposed for direct API access / debugging
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_PORT:-8081}:80"
+
+volumes:
+  pgdata:
+  thumbs:

@@ -1,0 +1,247 @@
+<div class="detail-wrap">
+  <div class="detail-topline">
+    <button type="button" class="back-btn" (click)="goBack()" aria-label="Back to search">
+      ‹ Back
+    </button>
+    <a routerLink="/" class="home-link">Search</a>
+  </div>
+
+  @if (loading()) {
+    <div class="state">Loading…</div>
+  } @else if (error()) {
+    <div class="state state--error">
+      <p>{{ error() }}</p>
+      <a routerLink="/">Back to search</a>
+    </div>
+  } @else if (object(); as obj) {
+    <!-- Header -->
+    <header class="detail-header">
+      <div class="header-main">
+        @if (editingTitle()) {
+          <div class="title-edit">
+            <input
+              type="text"
+              class="title-input"
+              placeholder="Custom name (empty = auto)"
+              aria-label="Custom object name"
+              [value]="titleDraft()"
+              [disabled]="savingTitle()"
+              (input)="onTitleInput($any($event.target).value)"
+              (keydown.enter)="saveTitle(); $event.preventDefault()"
+              (keydown.escape)="cancelEditTitle(); $event.preventDefault()"
+            />
+            <button
+              type="button"
+              class="btn-primary"
+              [disabled]="savingTitle()"
+              (click)="saveTitle()"
+            >
+              {{ savingTitle() ? 'Saving…' : 'Save' }}
+            </button>
+            <button
+              type="button"
+              [disabled]="savingTitle()"
+              (click)="cancelEditTitle()"
+            >
+              Cancel
+            </button>
+          </div>
+        } @else {
+          <div class="title-line">
+            <h1 class="obj-title">{{ obj.name }}</h1>
+            <button
+              type="button"
+              class="title-edit-btn"
+              aria-label="Edit name"
+              title="Edit name"
+              (click)="startEditTitle()"
+            >
+              ✏️
+            </button>
+          </div>
+          @if (obj.customName) {
+            <p class="auto-name">
+              auto: {{ obj.autoName }}
+              <button type="button" class="reset-link" (click)="resetName()">
+                reset
+              </button>
+            </p>
+          }
+        }
+        <p class="breadcrumb">
+          <span>{{ obj.artistName }}</span>
+          <span class="sep">·</span>
+          <span class="dim">{{ obj.releaseName }}</span>
+        </p>
+        <p class="meta">
+          <span class="meta-item">🧩 {{ obj.modelFileCount }} model file(s)</span>
+          <span class="meta-item">🖼 {{ obj.renders.length }} render(s)</span>
+        </p>
+      </div>
+      <div class="header-actions">
+        <button type="button" class="btn-primary" (click)="copyPath()">
+          📋 Copy path
+        </button>
+        <code class="host-path" [title]="obj.hostPath">{{ obj.hostPath }}</code>
+      </div>
+    </header>
+
+    <!-- Category editor -->
+    <section class="cat-editor">
+      <h2 class="section-title">Categories</h2>
+      <div class="cat-row">
+        @if (obj.categories.length) {
+          @for (c of obj.categories; track c.id) {
+            <span class="chip chip--removable">
+              {{ c.name }}
+              <button
+                type="button"
+                class="chip-x"
+                [attr.aria-label]="'Remove category ' + c.name"
+                (click)="removeCategory(c)"
+              >
+                ×
+              </button>
+            </span>
+          }
+        } @else {
+          <span class="cat-empty">No categories yet.</span>
+        }
+      </div>
+
+      <form class="cat-add" (submit)="addCategory(); $event.preventDefault()">
+        <input
+          type="text"
+          class="cat-input"
+          list="category-options"
+          placeholder="Add category…"
+          aria-label="Add category"
+          [value]="newCategory()"
+          [disabled]="addingCategory()"
+          (input)="onNewCategoryInput($any($event.target).value)"
+        />
+        <datalist id="category-options">
+          @for (c of categories(); track c.id) {
+            <option [value]="c.name"></option>
+          }
+        </datalist>
+        <button
+          type="submit"
+          [disabled]="addingCategory() || !newCategory().trim()"
+        >
+          {{ addingCategory() ? 'Adding…' : 'Add' }}
+        </button>
+      </form>
+    </section>
+
+    <!-- Render browser -->
+    <section class="render-browser">
+      <h2 class="section-title">Renders</h2>
+      @if (obj.renders.length === 0) {
+        <div class="state state--empty">
+          <span class="empty-icon" aria-hidden="true">🖼</span>
+          <p>No renders for this object (models only).</p>
+        </div>
+      } @else {
+        <div class="filmstrip">
+          @for (r of obj.renders; track r.id; let i = $index) {
+            <div
+              class="film-cell"
+              [class.film-cell--primary]="obj.primaryRenderId === r.id"
+            >
+              <button
+                type="button"
+                class="film-open"
+                [attr.aria-label]="'Open render ' + r.fileName"
+                (click)="openLightbox(i)"
+              >
+                <img
+                  [src]="thumb(r.id)"
+                  [alt]="r.fileName"
+                  loading="lazy"
+                  (error)="onImgError($event)"
+                />
+              </button>
+              @if (obj.primaryRenderId === r.id) {
+                <span class="primary-badge" aria-hidden="true">★ Primary</span>
+              }
+              <div class="film-footer">
+                <span class="film-name" [title]="r.fileName">{{ r.fileName }}</span>
+                <button
+                  type="button"
+                  class="star-btn"
+                  [class.star-btn--active]="obj.primaryRenderId === r.id"
+                  [disabled]="obj.primaryRenderId === r.id || settingPrimary() !== null"
+                  aria-label="Set as primary image"
+                  [attr.aria-pressed]="obj.primaryRenderId === r.id"
+                  title="Set as primary image"
+                  (click)="setPrimary(r.id, $event)"
+                >
+                  @if (obj.primaryRenderId === r.id) {
+                    ★ Primary
+                  } @else {
+                    ★ Set primary
+                  }
+                </button>
+              </div>
+            </div>
+          }
+        </div>
+      }
+    </section>
+  }
+</div>
+
+<!-- Lightbox overlay -->
+@if (lightboxRender(); as r) {
+  <div
+    class="lightbox"
+    role="dialog"
+    aria-modal="true"
+    [attr.aria-label]="'Render viewer: ' + r.fileName"
+    (click)="closeLightbox()"
+  >
+    <button
+      type="button"
+      class="lb-close"
+      aria-label="Close (Esc)"
+      (click)="closeLightbox(); $event.stopPropagation()"
+    >
+      ×
+    </button>
+
+    @if (renders().length > 1) {
+      <button
+        type="button"
+        class="lb-nav lb-prev"
+        aria-label="Previous render (Left arrow)"
+        (click)="prevRender(); $event.stopPropagation()"
+      >
+        ‹
+      </button>
+    }
+
+    <figure class="lb-figure" (click)="$event.stopPropagation()">
+      <img class="lb-img" [src]="file(r.id)" [alt]="r.fileName" (error)="onImgError($event)" />
+      <figcaption class="lb-caption">
+        <span class="lb-filename">{{ r.fileName }}</span>
+        @if (renders().length > 1) {
+          <span class="lb-counter">
+            {{ (lightboxIndex() ?? 0) + 1 }} / {{ renders().length }}
+          </span>
+        }
+      </figcaption>
+    </figure>
+
+    @if (renders().length > 1) {
+      <button
+        type="button"
+        class="lb-nav lb-next"
+        aria-label="Next render (Right arrow)"
+        (click)="nextRender(); $event.stopPropagation()"
+      >
+        ›
+      </button>
+    }
+  </div>
+}

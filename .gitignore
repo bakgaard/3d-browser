@@ -1,0 +1,16 @@
+# Env
+.env
+
+# .NET
+[Bb]in/
+[Oo]bj/
+*.user
+
+# Node / Angular
+node_modules/
+dist/
+.angular/
+
+# OS
+Thumbs.db
+.DS_Store

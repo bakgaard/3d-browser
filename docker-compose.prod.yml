@@ -1,0 +1,54 @@
+# Production compose: runs the pre-built images published to GitHub Container Registry
+# instead of building locally.
+#
+#   docker compose -f docker-compose.prod.yml pull
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# Set IMAGE_OWNER (your GitHub username/org) and optionally IMAGE_TAG in .env.
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: patreon
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-patreon}
+      POSTGRES_DB: patreon
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U patreon -d patreon"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    image: ${REGISTRY:-ghcr.io}/${IMAGE_OWNER}/3d-browser-backend:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      ConnectionStrings__Default: "Host=db;Port=5432;Database=patreon;Username=patreon;Password=${POSTGRES_PASSWORD:-patreon}"
+      Library__HostRoot: "${HOST_ROOT}"
+    volumes:
+      - type: bind
+        source: "${PATREON_PATH}"
+        target: /data/patreon
+        read_only: true
+      - type: bind
+        source: "${EPIC_PATH}"
+        target: "/data/shortcuts/Epic Miniatures"
+        read_only: true
+      - thumbs:/data/thumbs
+
+  frontend:
+    image: ${REGISTRY:-ghcr.io}/${IMAGE_OWNER}/3d-browser-frontend:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_PORT:-8081}:80"
+
+volumes:
+  pgdata:
+  thumbs:
